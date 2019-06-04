@@ -12,16 +12,27 @@ import (
 )
 
 func InstalledSoftwareList() ([]so.Software, error) {
-	sw64, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X64")
+	_, os, _, _, _, err := GetSystemProfile()
 	if err != nil {
 		return nil, err
 	}
-	sw32, err := getSoftwareList(`SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, "X32")
-	if err != nil {
-		return nil, err
+	if os.Architecture == "64-bit" {
+		sw64, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X64")
+		if err != nil {
+			return nil, err
+		}
+		sw32, err := getSoftwareList(`SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, "X32")
+		if err != nil {
+			return nil, err
+		}
+		return append(sw64, sw32...), nil
+	} else {
+		sw32, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X32")
+		if err != nil {
+			return nil, err
+		}
+		return sw32, nil
 	}
-
-	return append(sw64, sw32...), nil
 }
 
 func getSoftwareList(baseKey string, arch string) ([]so.Software, error) {
