@@ -1,3 +1,5 @@
+# UNDER TESTING for Windows 7 x32
+
 # GoLang Windows API Wrappers
 ## For System Info / User Management.
 For an internal project, this is a set of wrappers for snippets of the Windows API.
