@@ -2,13 +2,14 @@
 
 # GoLang Windows API Wrappers
 ## For System Info / User Management.
+This is a fork from "github.com/pavelblossom/go-win64api/shared". I its a copy but with win 32 supporting
 For an internal project, this is a set of wrappers for snippets of the Windows API.
 
 Tested and developed for Windows 10 x64.
 
 All functions that return useful data, do so in the form of JSON exportable structs.
 
-These structs are available in the shared library, "github.com/iamacarpet/go-win64api/shared"
+These structs are available in the shared library, "github.com/pavelblossom/go-win64api/shared"
 
 ### Process List
 ```go
@@ -16,7 +17,7 @@ package main
 
 import (
     "fmt"
-    wapi "github.com/iamacarpet/go-win64api"
+    wapi "github.com/pavelblossom/go-win64api"
 )
 
 func main(){
@@ -36,7 +37,7 @@ package main
 
 import (
     "fmt"
-    wapi "github.com/iamacarpet/go-win64api"
+    wapi "github.com/pavel/go-win64api"
 )
 
 func main(){
@@ -66,7 +67,7 @@ package main
 
 import (
     "fmt"
-    wapi "github.com/iamacarpet/go-win64api"
+    wapi "github.com/pavelblossom/go-win64api"
 )
 
 func main(){
@@ -88,7 +89,7 @@ package main
 import (
         "fmt"
         "time"
-        wapi "github.com/iamacarpet/go-win64api"
+        wapi "github.com/pavelblossom/go-win64api"
 )
 
 func main() {
@@ -114,7 +115,7 @@ package main
 import (
     "fmt"
 
-    wapi "github.com/iamacarpet/go-win64api"
+    wapi "github.com/pavelblossom/go-win64api"
 )
 
 func main(){
@@ -145,7 +146,7 @@ package main
 import (
     "fmt"
     "time"
-    wapi "github.com/iamacarpet/go-win64api"
+    wapi "github.com/pavelblossom/go-win64api"
 )
 
 func main(){
