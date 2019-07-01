@@ -35,6 +35,14 @@ func InstalledSoftwareList() ([]so.Software, error) {
 	}
 }
 
+func InstalledSoftwareList32() ([]so.Software, error) {
+	sw32, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X32")
+	if err != nil {
+		return nil, err
+	}
+	return sw32, nil
+}
+
 func getSoftwareList(baseKey string, arch string) ([]so.Software, error) {
 	k, err := registry.OpenKey(registry.LOCAL_MACHINE, baseKey, registry.QUERY_VALUE|registry.ENUMERATE_SUB_KEYS)
 	if err != nil {
