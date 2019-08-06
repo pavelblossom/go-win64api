@@ -1,5 +1,3 @@
-# UNDER TESTING for Windows 7 x32
-
 # GoLang Windows API Wrappers
 ## For System Info / User Management.
 This is a fork from "github.com/pavelblossom/go-win64api/shared". 
