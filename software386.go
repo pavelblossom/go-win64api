@@ -118,9 +118,6 @@ func getSoftwareList(key registry.Key, baseKey string, arch string, access uint3
 }
 
 func getSoftwareList32(key registry.Key, baseKey string, arch string, access uint32) ([]so.Software, error) {
-	fmt.Println(baseKey)
-	fmt.Println(key)
-	fmt.Println(arch)
 	k, err := registry.OpenKey(key, baseKey, access)
 	if err != nil {
 		return nil, fmt.Errorf("Error reading from registry: %s", err.Error())

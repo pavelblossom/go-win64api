@@ -26,7 +26,6 @@ func InstalledSoftwareList() ([]so.Software, error) {
 		return nil, err
 	}
 	appSw = append(appSw, swU...)
-
 	return appSw, nil
 }
 
@@ -39,6 +38,7 @@ func InstalledSoftwareList32() ([]so.Software, error) {
 	if err != nil {
 		return nil, err
 	}
+	logger.Debug(`test2`)
 	return append(sw32, swU...), nil
 }
 
@@ -48,7 +48,7 @@ func getSoftwareList(key registry.Key, baseKey string, arch string) ([]so.Softwa
 		return nil, fmt.Errorf("Error reading from registry: %s", err.Error())
 	}
 	defer k.Close()
-
+	logger.Debug(`test3`)
 	swList := make([]so.Software, 0)
 
 	subkeys, err := k.ReadSubKeyNames(-1)
