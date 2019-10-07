@@ -3,8 +3,10 @@
 package winapi
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"reflect"
 	"sort"
 	"strings"
@@ -14,6 +16,34 @@ import (
 
 	so "github.com/pavelblossom/go-win64api/shared"
 )
+
+//начало исправлений для powershell
+type powerShell struct {
+	powerShell string
+}
+
+func newPower() *powerShell {
+	ps, _ := exec.LookPath("powershell.exe")
+	return &powerShell{
+		powerShell: ps,
+	}
+}
+
+func (p *powerShell) Execute(args ...string) (stdOut string, stdErr string, err error) {
+	args = append([]string{"-NoProfile", "-NonInteractive"}, args...)
+	cmd := exec.Command(p.powerShell, args...)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err = cmd.Run()
+	stdOut, stdErr = stdout.String(), stderr.String()
+	return
+}
+
+//конец исправлений
 
 var (
 	modSecur32                    = syscall.NewLazyDLL("secur32.dll")
@@ -69,6 +99,11 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 	defer sessLsaFreeReturnBuffer.Call(uintptr(unsafe.Pointer(&loginSessionList)))
 
 	var iter uintptr = uintptr(unsafe.Pointer(loginSessionList))
+	//получим журнал за месяц
+	puhs := newPower()
+	cmd := `Get-WinEvent -ListLog Microsoft-Windows-TerminalServices-LocalSessionManager/Operational | Get-WinEvent | Where { $_.TimeCreated -gt (get-date).AddDays(-30) -and $_.id -eq "21"} | Sort-Object -Property timecreated -Descending| select  timecreated,message | Format-List`
+	std, _, _ := puhs.Execute(cmd)
+	//получили
 
 	for i := uint64(0); i < logonSessionCount; i++ {
 		var sessionData uintptr
@@ -87,14 +122,92 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 						if !(i < len(uList) && uList[i] == sUser) {
 							if uok, isAdmin := luidinmap(&data.LogonId, &PidLUIDList); uok {
 								uList = append(uList, sUser)
+								//fmt.Println("----------------------------------------------------")
+								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Based")
 								ud := so.SessionDetails{
 									Username:      strings.ToLower(LsatoString(data.UserName)),
 									Domain:        strLogonDomain,
 									LocalAdmin:    isAdmin,
 									LogonType:     data.LogonType,
 									DnsDomainName: LsatoString(data.DnsDomainName),
-									LogonTime:     uint64TimestampToTime(data.LogonTime),
+									//	Sid:           data.Sid,
+									Session:   data.Session,
+									LogonTime: uint64TimestampToTime(data.LogonTime),
 								}
+								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Active")
+								// получим метку активности сессии. Все работают не фонтан как быстро. Это скорее тестирование алогритма. Вычислять лучше не по каждой сессии,
+								//а предварительно подготавливать данные асинхронно
+								ud.State = false
+								posh := newPower()
+								cmd := `[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding("UTF-8");quser ` + ud.Username + `| ForEach-Object {$_.Trim() -replace "\s+",";"} |ft -hide `
+								stdout, _, _ := posh.Execute(cmd)
+								stdoutr := strings.Split(string(stdout), "\n")
+								for i := 0; i < len(stdoutr); i++ {
+									if (strings.Contains(stdoutr[i], ud.Username)) && (strings.Contains(stdoutr[i], ";Active;")) {
+										ud.State = true
+									}
+								}
+								posh = nil
+								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "SID")
+								//найдем SID пользователя
+								cmdpath := "c:\\Windows\\System32\\cmd.exe"
+								qsid, _ := exec.Command(cmdpath, "/c", "CHCP", "65001", "|", "wmic", "useraccount", "where", "name='"+ud.Username+"'", "get", "sid", "/FORMAT:CSV").Output()
+
+								if len(strings.Split(string(qsid), "\n")) == 4 {
+
+									sid := strings.Trim(strings.Split(string(qsid), "\n")[2], " ")
+									sid = strings.Split(string(qsid), ",")[2]
+									sid = strings.Replace(sid, "\n", "", -1)
+									sid = strings.Replace(sid, "\r", "", -1)
+									ud.Sid = sid
+								}
+								qsid = nil
+								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Reestr")
+								//проверить в реестре откуда подключился, предварительно считаем, что локально
+								reestr := fmt.Sprintf(`HKEY_USERS\%+v\Volatile Environment\%+v\`, ud.Sid, ud.Session)
+								reg, _ := exec.Command(cmdpath, "/C", "reg", "query", reestr, "/v", "CLIENTNAME").Output()
+								ud.Hostcon = "local"
+								if len(strings.Split(string(reg), "CLIENTNAME")) == 2 {
+									hostname := strings.Trim(strings.Split(string(reg), "CLIENTNAME")[1], " ")
+									hostname = strings.ReplaceAll(hostname, "REG_SZ", "")
+									hostname = strings.ReplaceAll(hostname, "\n", "")
+									hostname = strings.ReplaceAll(hostname, "\r", "")
+									hostname = strings.Trim(hostname, " ")
+
+									if len(hostname) > 2 {
+										ud.Hostcon = hostname
+									}
+								}
+								reg = nil
+								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Journal")
+								//проверим журнал безопасности по логам подключения rdp (Важно: Савлюк цеплялся по ssh видимо с мака, его ip остался неизвестен)
+								ud.IPcon = "//localhost" //преварительно считаем, что вошли локально
+								if ud.Hostcon != "local" {
+									stdR := strings.Split(std, "TimeCreated")
+									for k := 0; k < len(stdR); k++ {
+										chectctd := strings.Split(stdR[k], ":")
+										if len(chectctd) == 10 {
+											findeduser := strings.Split(chectctd[7], "\n")[0]
+											findeduser = strings.ReplaceAll(findeduser, "\n", "")
+											findeduser = strings.ReplaceAll(findeduser, "\r", "")
+											findeduser = strings.ReplaceAll(findeduser, " ", "")
+											findedses := strings.Split(chectctd[8], "\n")[0]
+											findedses = strings.ReplaceAll(findedses, "\n", "")
+											findedses = strings.ReplaceAll(findedses, "\r", "")
+											findedses = strings.ReplaceAll(findedses, " ", "")
+											findedip := chectctd[9]
+											findedip = strings.ReplaceAll(findedip, "\n", "")
+											findedip = strings.ReplaceAll(findedip, "\r", "")
+											findedip = strings.ReplaceAll(findedip, " ", "")
+											str := fmt.Sprint(ud.Session)
+											if (strings.ToLower(findedses) == strings.ToLower(str)) && (strings.Index(strings.ToLower(findeduser), "\\"+strings.ToLower(ud.Username)) > 5) {
+												ud.IPcon = findedip
+												k = len(stdR)
+											}
+										}
+									}
+								}
+
 								hn, _ := os.Hostname()
 								if strings.ToUpper(ud.Domain) == strings.ToUpper(hn) {
 									ud.LocalUser = true

@@ -1,7 +1,5 @@
 package shared
 
-import ()
-
 type Service struct {
 	SCName      string `json:"name"`
 	DisplayName string `json:"displayName"`

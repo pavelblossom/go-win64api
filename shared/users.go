@@ -14,6 +14,7 @@ type LocalUser struct {
 	NoChangePassword     bool          `json:"noChangePassword"`
 	PasswordAge          time.Duration `json:"passwordAge"`
 	LastLogon            time.Time     `json:"lastLogon"`
+	LastLogoff           time.Time     `json:"lastLogoff"`
 	BadPasswordCount     uint32        `json:"badPasswordCount"`
 	NumberOfLogons       uint32        `json:"numberOfLogons"`
 }

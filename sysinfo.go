@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	ole "github.com/go-ole/go-ole"
+	"github.com/go-ole/go-ole"
 	"github.com/go-ole/go-ole/oleutil"
 
 	so "github.com/pavelblossom/go-win64api/shared"
