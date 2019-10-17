@@ -1,54 +1,47 @@
-// +build windows,amd64
+// +build windows
 
 package winapi
 
 import (
 	"fmt"
-	so "github.com/pavelblossom/go-win64api/shared"
-	"golang.org/x/sys/windows/registry"
+	"reflect"
 	"time"
+
+	"golang.org/x/sys/windows/registry"
+
+	so "github.com/pavelblossom/go-win64api/shared"
 )
 
 func InstalledSoftwareList() ([]so.Software, error) {
-	var appSw []so.Software
-	sw64, err := getSoftwareList(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X64")
+	list := make([]so.Software, 0)
+	sw64, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X32", registry.READ|registry.WOW64_64KEY)
 	if err != nil {
-		return nil, err
+		sw64 = nil
 	}
-	appSw = append(appSw, sw64...)
-	sw32, err := getSoftwareList(registry.LOCAL_MACHINE, `SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall`, "X32")
+	sw32, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X32", registry.READ|registry.WOW64_32KEY)
 	if err != nil {
-		return nil, err
+		sw32 = nil
 	}
-	appSw = append(appSw, sw32...)
-	swU, err := getSoftwareList(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Uninstall`, "X32")
-	if err != nil {
-		return nil, err
+	if reflect.DeepEqual(sw64, sw32) {
+		list = append(list, sw32...)
+		return list, nil
+	} else {
+		if err != nil {
+			sw64 = nil
+		}
+		list = append(list, sw32...)
+		list = append(list, sw64...)
+		return list, nil
 	}
-	appSw = append(appSw, swU...)
-	return appSw, nil
 }
 
-func InstalledSoftwareList32() ([]so.Software, error) {
-	sw32, err := getSoftwareList(registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X32")
-	if err != nil {
-		return nil, err
-	}
-	swU, err := getSoftwareList(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Uninstall`, "X32")
-	if err != nil {
-		return nil, err
-	}
-	logger.Debug(`test2`)
-	return append(sw32, swU...), nil
-}
-
-func getSoftwareList(key registry.Key, baseKey string, arch string) ([]so.Software, error) {
-	k, err := registry.OpenKey(key, baseKey, registry.QUERY_VALUE|registry.ENUMERATE_SUB_KEYS)
+func getSoftwareList(baseKey string, arch string, param uint32) ([]so.Software, error) {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, baseKey, param)
 	if err != nil {
 		return nil, fmt.Errorf("Error reading from registry: %s", err.Error())
 	}
 	defer k.Close()
-	logger.Debug(`test3`)
+
 	swList := make([]so.Software, 0)
 
 	subkeys, err := k.ReadSubKeyNames(-1)
@@ -56,7 +49,7 @@ func getSoftwareList(key registry.Key, baseKey string, arch string) ([]so.Softwa
 		return nil, fmt.Errorf("Error reading subkey list from registry: %s", err.Error())
 	}
 	for _, sw := range subkeys {
-		sk, err := registry.OpenKey(key, baseKey+`\`+sw, registry.QUERY_VALUE)
+		sk, err := registry.OpenKey(registry.LOCAL_MACHINE, baseKey+`\`+sw, param)
 		if err != nil {
 			return nil, fmt.Errorf("Error reading from registry (subkey %s): %s", sw, err.Error())
 		}
