@@ -19,6 +19,11 @@ type SessionDetails struct {
 	LogonType     uint32    `json:"logonType"`
 	LogonTime     time.Time `json:"logonTime"`
 	DnsDomainName string    `json:"dnsDomainName"`
+	Session       uint32    `json:"session"`
+	Sid           string    `json:"sid"`
+	State         bool      `json:"state"`
+	IPcon         string    `json:"ipcon"`
+	Hostcon       string    `json:"hostcon"`
 }
 
 func (s *SessionDetails) FullUser() string {

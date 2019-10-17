@@ -343,6 +343,7 @@ func ListLocalUsers() ([]so.LocalUser, error) {
 			FullName:         UTF16toString(data.Usri2_full_name),
 			PasswordAge:      (time.Duration(data.Usri2_password_age) * time.Second),
 			LastLogon:        time.Unix(int64(data.Usri2_last_logon), 0),
+			LastLogoff:       time.Unix(int64(data.Usri2_last_logoff), 0),
 			BadPasswordCount: data.Usri2_bad_pw_count,
 			NumberOfLogons:   data.Usri2_num_logons,
 		}
