@@ -338,6 +338,10 @@ func ListLocalUsers() ([]so.LocalUser, error) {
 	for i := uint32(0); i < entriesRead; i++ {
 		var data = (*USER_INFO_2)(unsafe.Pointer(iter))
 
+		s := UTF16toString(data.Usri2_name)
+		sid, _ := GetRawSidForAccountName(s)
+		sid2, _ := ConvertRawSidToStringSid(sid)
+
 		ud := so.LocalUser{
 			Username:         UTF16toString(data.Usri2_name),
 			FullName:         UTF16toString(data.Usri2_full_name),
@@ -346,6 +350,7 @@ func ListLocalUsers() ([]so.LocalUser, error) {
 			LastLogoff:       time.Unix(int64(data.Usri2_last_logoff), 0),
 			BadPasswordCount: data.Usri2_bad_pw_count,
 			NumberOfLogons:   data.Usri2_num_logons,
+			SID:              sid2,
 		}
 
 		if (data.Usri2_flags & USER_UF_ACCOUNTDISABLE) != USER_UF_ACCOUNTDISABLE {

@@ -3,53 +3,25 @@
 package winapi
 
 import (
-	"bytes"
 	"fmt"
+	so "github.com/pavelblossom/go-win64api/shared"
+	"golang.org/x/sys/windows"
 	"os"
-	"os/exec"
 	"reflect"
 	"sort"
 	"strings"
 	"syscall"
 	"time"
 	"unsafe"
-
-	so "github.com/pavelblossom/go-win64api/shared"
 )
 
-//начало исправлений для powershell
-type powerShell struct {
-	powerShell string
-}
-
-func newPower() *powerShell {
-	ps, _ := exec.LookPath("powershell.exe")
-	return &powerShell{
-		powerShell: ps,
-	}
-}
-
-func (p *powerShell) Execute(args ...string) (stdOut string, stdErr string, err error) {
-	args = append([]string{"-NoProfile", "-NonInteractive"}, args...)
-	cmd := exec.Command(p.powerShell, args...)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
-	stdOut, stdErr = stdout.String(), stderr.String()
-	return
-}
-
-//конец исправлений
-
 var (
-	modSecur32                    = syscall.NewLazyDLL("secur32.dll")
-	sessLsaFreeReturnBuffer       = modSecur32.NewProc("LsaFreeReturnBuffer")
-	sessLsaEnumerateLogonSessions = modSecur32.NewProc("LsaEnumerateLogonSessions")
-	sessLsaGetLogonSessionData    = modSecur32.NewProc("LsaGetLogonSessionData")
+	modwtsapi32                   *windows.LazyDLL  = windows.NewLazySystemDLL("wtsapi32.dll")
+	procWTSEnumerateSessionsW     *windows.LazyProc = modwtsapi32.NewProc("WTSEnumerateSessionsW")
+	modSecur32                                      = syscall.NewLazyDLL("secur32.dll")
+	sessLsaFreeReturnBuffer                         = modSecur32.NewProc("LsaFreeReturnBuffer")
+	sessLsaEnumerateLogonSessions                   = modSecur32.NewProc("LsaEnumerateLogonSessions")
+	sessLsaGetLogonSessionData                      = modSecur32.NewProc("LsaGetLogonSessionData")
 )
 
 type LUID struct {
@@ -77,6 +49,34 @@ type LSA_UNICODE_STRING struct {
 	MaximumLength uint16
 	buffer        uintptr
 }
+type WTS_SESSION_INFO struct {
+	SessionID      windows.Handle
+	WinStationName *uint16
+	State          int
+}
+
+const (
+	WTS_CURRENT_SERVER_HANDLE uintptr = 0
+)
+
+func WTSEnumerateSessions() ([]*WTS_SESSION_INFO, error) {
+	var (
+		sessionInformation windows.Handle      = windows.Handle(0)
+		sessionCount       int                 = 0
+		sessionList        []*WTS_SESSION_INFO = make([]*WTS_SESSION_INFO, 0)
+	)
+	if returnCode, _, err := procWTSEnumerateSessionsW.Call(WTS_CURRENT_SERVER_HANDLE, 0, 1, uintptr(unsafe.Pointer(&sessionInformation)), uintptr(unsafe.Pointer(&sessionCount))); returnCode == 0 {
+		return nil, fmt.Errorf("call native WTSEnumerateSessionsW: %s", err)
+	}
+	structSize := unsafe.Sizeof(WTS_SESSION_INFO{})
+	current := uintptr(sessionInformation)
+	for i := 0; i < sessionCount; i++ {
+		sessionList = append(sessionList, (*WTS_SESSION_INFO)(unsafe.Pointer(current)))
+		current += structSize
+	}
+
+	return sessionList, nil
+}
 
 func ListLoggedInUsers() ([]so.SessionDetails, error) {
 	var (
@@ -91,7 +91,10 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error getting process list, %s.", err.Error())
 	}
-
+	sessionsWTS, err := WTSEnumerateSessions()
+	if err != nil {
+		return nil, fmt.Errorf("Error getting WTS sessions, %s.", err.Error())
+	}
 	_, _, _ = sessLsaEnumerateLogonSessions.Call(
 		uintptr(unsafe.Pointer(&logonSessionCount)),
 		uintptr(unsafe.Pointer(&loginSessionList)),
@@ -99,18 +102,12 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 	defer sessLsaFreeReturnBuffer.Call(uintptr(unsafe.Pointer(&loginSessionList)))
 
 	var iter uintptr = uintptr(unsafe.Pointer(loginSessionList))
-	//получим журнал за месяц
-	puhs := newPower()
-	cmd := `Get-WinEvent -ListLog Microsoft-Windows-TerminalServices-LocalSessionManager/Operational | Get-WinEvent | Where { $_.TimeCreated -gt (get-date).AddDays(-30) -and $_.id -eq "21"} | Sort-Object -Property timecreated -Descending| select  timecreated,message | Format-List`
-	std, _, _ := puhs.Execute(cmd)
-	//получили
 
 	for i := uint64(0); i < logonSessionCount; i++ {
 		var sessionData uintptr
 		_, _, _ = sessLsaGetLogonSessionData.Call(uintptr(iter), uintptr(unsafe.Pointer(&sessionData)))
 		if sessionData != uintptr(0) {
 			var data *SECURITY_LOGON_SESSION_DATA = (*SECURITY_LOGON_SESSION_DATA)(unsafe.Pointer(sessionData))
-
 			if data.Sid != uintptr(0) {
 				validTypes := []uint32{so.SESS_INTERACTIVE_LOGON, so.SESS_CACHED_INTERACTIVE_LOGON, so.SESS_REMOTE_INTERACTIVE_LOGON}
 				if in_array(data.LogonType, validTypes) {
@@ -122,90 +119,21 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 						if !(i < len(uList) && uList[i] == sUser) {
 							if uok, isAdmin := luidinmap(&data.LogonId, &PidLUIDList); uok {
 								uList = append(uList, sUser)
-								//fmt.Println("----------------------------------------------------")
-								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Based")
+								var sessionState int = 10
+								for _, wtsSession := range sessionsWTS {
+									if uint32(wtsSession.SessionID) == data.Session {
+										sessionState = wtsSession.State
+									}
+								}
 								ud := so.SessionDetails{
 									Username:      strings.ToLower(LsatoString(data.UserName)),
 									Domain:        strLogonDomain,
 									LocalAdmin:    isAdmin,
 									LogonType:     data.LogonType,
 									DnsDomainName: LsatoString(data.DnsDomainName),
-									//	Sid:           data.Sid,
-									Session:   data.Session,
-									LogonTime: uint64TimestampToTime(data.LogonTime),
-								}
-								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Active")
-								// получим метку активности сессии. Все работают не фонтан как быстро. Это скорее тестирование алогритма. Вычислять лучше не по каждой сессии,
-								//а предварительно подготавливать данные асинхронно
-								ud.State = false
-								posh := newPower()
-								cmd := `[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding("UTF-8");quser ` + ud.Username + `| ForEach-Object {$_.Trim() -replace "\s+",";"} |ft -hide `
-								stdout, _, _ := posh.Execute(cmd)
-								stdoutr := strings.Split(string(stdout), "\n")
-								for i := 0; i < len(stdoutr); i++ {
-									if (strings.Contains(stdoutr[i], ud.Username)) && (strings.Contains(stdoutr[i], ";Active;")) {
-										ud.State = true
-									}
-								}
-								posh = nil
-								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "SID")
-								//найдем SID пользователя
-								cmdpath := "c:\\Windows\\System32\\cmd.exe"
-								qsid, _ := exec.Command(cmdpath, "/c", "CHCP", "65001", "|", "wmic", "useraccount", "where", "name='"+ud.Username+"'", "get", "sid", "/FORMAT:CSV").Output()
-
-								if len(strings.Split(string(qsid), "\n")) == 4 {
-
-									sid := strings.Trim(strings.Split(string(qsid), "\n")[2], " ")
-									sid = strings.Split(string(qsid), ",")[2]
-									sid = strings.Replace(sid, "\n", "", -1)
-									sid = strings.Replace(sid, "\r", "", -1)
-									ud.Sid = sid
-								}
-								qsid = nil
-								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Reestr")
-								//проверить в реестре откуда подключился, предварительно считаем, что локально
-								reestr := fmt.Sprintf(`HKEY_USERS\%+v\Volatile Environment\%+v\`, ud.Sid, ud.Session)
-								reg, _ := exec.Command(cmdpath, "/C", "reg", "query", reestr, "/v", "CLIENTNAME").Output()
-								ud.Hostcon = "local"
-								if len(strings.Split(string(reg), "CLIENTNAME")) == 2 {
-									hostname := strings.Trim(strings.Split(string(reg), "CLIENTNAME")[1], " ")
-									hostname = strings.ReplaceAll(hostname, "REG_SZ", "")
-									hostname = strings.ReplaceAll(hostname, "\n", "")
-									hostname = strings.ReplaceAll(hostname, "\r", "")
-									hostname = strings.Trim(hostname, " ")
-
-									if len(hostname) > 2 {
-										ud.Hostcon = hostname
-									}
-								}
-								reg = nil
-								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Journal")
-								//проверим журнал безопасности по логам подключения rdp (Важно: Савлюк цеплялся по ssh видимо с мака, его ip остался неизвестен)
-								ud.IPcon = "//localhost" //преварительно считаем, что вошли локально
-								if ud.Hostcon != "local" {
-									stdR := strings.Split(std, "TimeCreated")
-									for k := 0; k < len(stdR); k++ {
-										chectctd := strings.Split(stdR[k], ":")
-										if len(chectctd) == 10 {
-											findeduser := strings.Split(chectctd[7], "\n")[0]
-											findeduser = strings.ReplaceAll(findeduser, "\n", "")
-											findeduser = strings.ReplaceAll(findeduser, "\r", "")
-											findeduser = strings.ReplaceAll(findeduser, " ", "")
-											findedses := strings.Split(chectctd[8], "\n")[0]
-											findedses = strings.ReplaceAll(findedses, "\n", "")
-											findedses = strings.ReplaceAll(findedses, "\r", "")
-											findedses = strings.ReplaceAll(findedses, " ", "")
-											findedip := chectctd[9]
-											findedip = strings.ReplaceAll(findedip, "\n", "")
-											findedip = strings.ReplaceAll(findedip, "\r", "")
-											findedip = strings.ReplaceAll(findedip, " ", "")
-											str := fmt.Sprint(ud.Session)
-											if (strings.ToLower(findedses) == strings.ToLower(str)) && (strings.Index(strings.ToLower(findeduser), "\\"+strings.ToLower(ud.Username)) > 5) {
-												ud.IPcon = findedip
-												k = len(stdR)
-											}
-										}
-									}
+									LogonTime:     uint64TimestampToTime(data.LogonTime),
+									Session:       data.Session,
+									State:         sessionState,
 								}
 
 								hn, _ := os.Hostname()

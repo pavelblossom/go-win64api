@@ -17,4 +17,5 @@ type LocalUser struct {
 	LastLogoff           time.Time     `json:"lastLogoff"`
 	BadPasswordCount     uint32        `json:"badPasswordCount"`
 	NumberOfLogons       uint32        `json:"numberOfLogons"`
+	SID                  string        `json:"sid"`
 }

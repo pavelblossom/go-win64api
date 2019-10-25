@@ -21,7 +21,7 @@ type SessionDetails struct {
 	DnsDomainName string    `json:"dnsDomainName"`
 	Session       uint32    `json:"session"`
 	Sid           string    `json:"sid"`
-	State         bool      `json:"state"`
+	State         int       `json:"state"`
 	IPcon         string    `json:"ipcon"`
 	Hostcon       string    `json:"hostcon"`
 }
