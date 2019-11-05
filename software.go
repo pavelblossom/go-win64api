@@ -26,6 +26,7 @@ func InstalledSoftwareList() ([]so.Software, error) {
 		list = append(list, sw32...)
 		return list, nil
 	} else {
+		sw64, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X64", registry.READ|registry.WOW64_64KEY)
 		if err != nil {
 			sw64 = nil
 		}

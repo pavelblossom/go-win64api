@@ -343,16 +343,12 @@ func ListLocalUsers() ([]so.LocalUser, error) {
 		sid2, _ := ConvertRawSidToStringSid(sid)
 
 		ud := so.LocalUser{
-			Username: UTF16toString(data.Usri2_name),
-			FullName: UTF16toString(data.Usri2_full_name),
-			//PasswordAge:      time.Duration(data.Usri2_password_age),
-			//LastLogon:     time.Unix(int64(data.Usri2_last_logon), 0).UTC()   ,
-			//LastLogoff:       time.Unix(int64(data.Usri2_last_logoff), 0).UTC(),
+			Username:         UTF16toString(data.Usri2_name),
+			FullName:         UTF16toString(data.Usri2_full_name),
 			BadPasswordCount: data.Usri2_bad_pw_count,
 			NumberOfLogons:   data.Usri2_num_logons,
 			SID:              sid2,
 		}
-		fmt.Println(`sdasdsadasdasd`)
 		sec := 60 * time.Second
 		if time.Duration(data.Usri2_password_age) > 0 {
 			ud.PasswordAge.Scan(time.Now().Add(-1 * time.Second * time.Duration(data.Usri2_password_age)).UTC().Truncate(sec))
