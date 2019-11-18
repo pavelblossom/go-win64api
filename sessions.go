@@ -38,10 +38,10 @@ func (p *powerShell) Execute(args ...string) (stdOut string, stdErr string, err 
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-
 	err = cmd.Run()
+	defer stdout.Reset()
+	defer stderr.Reset()
 	stdOut, stdErr = stdout.String(), stderr.String()
-	fmt.Println(stdErr)
 	return
 }
 
