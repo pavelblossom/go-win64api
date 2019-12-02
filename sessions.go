@@ -3,7 +3,6 @@
 package winapi
 
 import (
-	"bytes"
 	"fmt"
 	so "github.com/pavelblossom/go-win64api/shared"
 	"golang.org/x/sys/windows"
@@ -16,36 +15,6 @@ import (
 	"time"
 	"unsafe"
 )
-
-//начало исправлений для powershell
-type powerShell struct {
-	powerShell string
-}
-
-func newPower() *powerShell {
-	ps, _ := exec.LookPath("powershell.exe")                               //так и надо оставить если 64 и 64
-	ps = "c:\\windows\\sysnative\\WindowsPowerShell\\v1.0\\powershell.exe" //так если система 64 а клиент 32
-	return &powerShell{
-		powerShell: ps,
-	}
-}
-
-func (p *powerShell) Execute(args ...string) (stdOut string, stdErr string, err error) {
-	args = append([]string{"-NoProfile", "-NonInteractive"}, args...)
-	cmd := exec.Command(p.powerShell, args...)
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	defer stdout.Reset()
-	defer stderr.Reset()
-	stdOut, stdErr = stdout.String(), stderr.String()
-	return
-}
-
-//конец исправлений
 
 var (
 	modwtsapi32                   *windows.LazyDLL  = windows.NewLazySystemDLL("wtsapi32.dll")
@@ -134,12 +103,6 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 	defer sessLsaFreeReturnBuffer.Call(uintptr(unsafe.Pointer(&loginSessionList)))
 
 	var iter uintptr = uintptr(unsafe.Pointer(loginSessionList))
-	//получим журнал за месяц
-	puhs := newPower()
-	cmdpath := "cmd.exe"
-	cmd := `Get-WinEvent -ListLog Microsoft-Windows-TerminalServices-LocalSessionManager/Operational | Get-WinEvent | Where { $_.TimeCreated -gt (get-date).AddDays(-30) -and $_.id -eq "21"} | Sort-Object -Property timecreated -Descending| select  timecreated,message | Format-List`
-	std, _, _ := puhs.Execute(cmd)
-	//получили
 
 	for i := uint64(0); i < logonSessionCount; i++ {
 		var sessionData uintptr
@@ -185,7 +148,7 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 								ud.Hostcon = "local"
 
 								reestr := fmt.Sprintf(`HKEY_USERS\%+v\Volatile Environment\%+v\`, ud.Sid, ud.Session)
-								reg, _ := exec.Command(cmdpath, "/C", "reg", "query", reestr, "/v", "CLIENTNAME").Output()
+								reg, _ := exec.Command("cmd.exe", "/c", "chcp", "65001", "&", "cmd.exe", "/C", "reg", "query", reestr, "/v", "CLIENTNAME").Output()
 								ud.Hostcon = "local"
 								if len(strings.Split(string(reg), "CLIENTNAME")) == 2 {
 									hostname := strings.Trim(strings.Split(string(reg), "CLIENTNAME")[1], " ")
@@ -199,39 +162,6 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 									}
 								}
 								reg = nil
-								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Journal")
-								//проверим журнал безопасности по логам подключения rdp (Важно: Савлюк цеплялся по ssh видимо с мака, его ip остался неизвестен)
-								ud.IPcon = "not find in wni-event logon" //преварительно считаем, что вошли локально
-								if ud.Hostcon != "local" {
-									stdR := strings.Split(std, "TimeCreated")
-									for k := 0; k < len(stdR); k++ {
-										chectctd := strings.Split(stdR[k], ":")
-										if len(chectctd) == 10 {
-											findeduser := strings.Split(chectctd[7], "\n")[0]
-											findeduser = strings.ReplaceAll(findeduser, "\n", "")
-											findeduser = strings.ReplaceAll(findeduser, "\r", "")
-											findeduser = strings.ReplaceAll(findeduser, " ", "")
-											findedses := strings.Split(chectctd[8], "\n")[0]
-											findedses = strings.ReplaceAll(findedses, "\n", "")
-											findedses = strings.ReplaceAll(findedses, "\r", "")
-											findedses = strings.ReplaceAll(findedses, " ", "")
-											findedip := chectctd[9]
-											findedip = strings.ReplaceAll(findedip, "\n", "")
-											findedip = strings.ReplaceAll(findedip, "\r", "")
-											findedip = strings.ReplaceAll(findedip, " ", "")
-											str := fmt.Sprint(ud.Session)
-											if (strings.ToLower(findedses) == strings.ToLower(str)) && (strings.Index(strings.ToLower(findeduser), "\\"+strings.ToLower(ud.Username)) > 5) {
-												ud.IPcon = findedip
-												k = len(stdR)
-											}
-
-										}
-									}
-
-								} else {
-									ud.IPcon = "local"
-								}
-
 								hn, _ := os.Hostname()
 								if strings.ToUpper(ud.Domain) == strings.ToUpper(hn) {
 									ud.LocalUser = true

@@ -12,18 +12,24 @@ const (
 )
 
 type SessionDetails struct {
-	Username      string    `json:"username"`
-	Domain        string    `json:"domain"`
-	LocalUser     bool      `json:"isLocal"`
-	LocalAdmin    bool      `json:"isAdmin"`
-	LogonType     uint32    `json:"logonType"`
-	LogonTime     time.Time `json:"logonTime"`
-	DnsDomainName string    `json:"dnsDomainName"`
-	Session       uint32    `json:"session"`
-	Sid           string    `json:"sid"`
-	State         int       `json:"state"`
-	IPcon         string    `json:"ipcon"`
-	Hostcon       string    `json:"hostcon"`
+	Username       string        `json:"username"`
+	Domain         string        `json:"domain"`
+	LocalUser      bool          `json:"isLocal"`
+	LocalAdmin     bool          `json:"isAdmin"`
+	LogonType      uint32        `json:"logonType"`
+	LogonTime      time.Time     `json:"logonTime"`
+	DnsDomainName  string        `json:"dnsDomainName"`
+	Session        uint32        `json:"session"`
+	Sid            string        `json:"sid"`
+	State          int           `json:"state"`
+	Hostcon        string        `json:"hostcon"`
+	ActivityId     string        `json:"activityId"`
+	ConnectionName string        `json:"connectionName"`
+	ClientIPPort   ClientNetData `json:"clientIp"`
+}
+type ClientNetData struct {
+	Ip   string `json:"IP"`
+	Port string `json:"Port"`
 }
 
 func (s *SessionDetails) FullUser() string {
