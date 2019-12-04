@@ -29,7 +29,7 @@ type SessionDetails struct {
 }
 type ClientNetData struct {
 	Ip   string `json:"IP"`
-	Port string `json:"Port"`
+	Port int64  `json:"Port"`
 }
 
 func (s *SessionDetails) FullUser() string {
