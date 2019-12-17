@@ -16,11 +16,11 @@ func InstalledSoftwareList() ([]so.Software, error) {
 	list := make([]so.Software, 0)
 	sw64, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X32", registry.READ|registry.WOW64_64KEY)
 	if err != nil {
-		sw64 = nil
+		sw64 = make([]so.Software, 0)
 	}
 	sw32, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X32", registry.READ|registry.WOW64_32KEY)
 	if err != nil {
-		sw32 = nil
+		sw32 = make([]so.Software, 0)
 	}
 	if reflect.DeepEqual(sw64, sw32) {
 		list = append(list, sw32...)
@@ -28,7 +28,7 @@ func InstalledSoftwareList() ([]so.Software, error) {
 	} else {
 		sw64, err := getSoftwareList(`SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall`, "X64", registry.READ|registry.WOW64_64KEY)
 		if err != nil {
-			sw64 = nil
+			sw64 = make([]so.Software, 0)
 		}
 		list = append(list, sw32...)
 		list = append(list, sw64...)
