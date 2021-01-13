@@ -1,9 +1,7 @@
 # GoLang Windows API Wrappers
 ## For System Info / User Management.
-This is a fork from "github.com/pavelblossom/go-win64api/shared". 
-I its a copy but with Windows 32 supporting
+This is a fork from "https://github.com/iamacarpet/go-win64api" but with Windows 32 support.
 For an internal project, this is a set of wrappers for snippets of the Windows API.
-
 Tested and developed for Windows 10 32/64, Win8 32/64, Win7 32/64
 
 All functions that return useful data, do so in the form of JSON exportable structs.

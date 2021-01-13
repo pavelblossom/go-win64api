@@ -32,6 +32,8 @@ func InstalledSoftwareList() ([]so.Software, error) {
 		}
 		list = append(list, sw32...)
 		list = append(list, sw64...)
+		sw32 = nil
+		sw64 = nil
 		return list, nil
 	}
 }
@@ -54,7 +56,7 @@ func getSoftwareList(baseKey string, arch string, param uint32) ([]so.Software, 
 		if err != nil {
 			return nil, fmt.Errorf("Error reading from registry (subkey %s): %s", sw, err.Error())
 		}
-
+		defer sk.Close()
 		dn, _, err := sk.GetStringValue("DisplayName")
 		if err == nil {
 			swv := so.Software{DisplayName: dn, Arch: arch}

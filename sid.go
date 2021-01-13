@@ -30,7 +30,9 @@ func GetRawSidForAccountName(accountName string) ([]byte, error) {
 		}
 		accountName = hostname + "\\" + accountName
 	}
-
+	return GetRawSibByNamePointer(accountName)
+}
+func GetRawSibByNamePointer(accountName string) ([]byte, error) {
 	namePointer, err := syscall.UTF16PtrFromString(accountName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert account name to UTF16: %v", err)
@@ -76,6 +78,22 @@ func GetRawSidForAccountName(accountName string) ([]byte, error) {
 	}
 
 	return sidBuffer, nil
+}
+func GetRawSidForAccountNameFromCompName(accountName string) ([]byte, error) {
+	if strings.ContainsRune(accountName, '\\') {
+		accountName = strings.Split(accountName, "\\")[1]
+	}
+	accountName = os.Getenv("COMPUTERNAME") + "\\" + accountName
+	return GetRawSibByNamePointer(accountName)
+}
+func GetRawSidForAccountNameFromDnsDomainName(accountName string, domainName string) ([]byte, error) {
+	if strings.ContainsRune(accountName, '\\') {
+		accountName = strings.Split(accountName, "\\")[1]
+	}
+	if len(domainName) > 0 {
+		accountName = domainName + "\\" + accountName
+	}
+	return GetRawSibByNamePointer(accountName)
 }
 
 // ConvertRawSidToStringSid converts a buffer containing a raw _SID struct

@@ -340,8 +340,13 @@ func ListLocalUsers() ([]so.LocalUser, error) {
 
 		s := UTF16toString(data.Usri2_name)
 		sid, _ := GetRawSidForAccountName(s)
+		if sid == nil {
+			sid, _ = GetRawSidForAccountNameFromCompName(s)
+		}
+		if sid == nil {
+			sid, _ = GetRawSibByNamePointer(s)
+		}
 		sid2, _ := ConvertRawSidToStringSid(sid)
-
 		ud := so.LocalUser{
 			Username:         UTF16toString(data.Usri2_name),
 			FullName:         UTF16toString(data.Usri2_full_name),

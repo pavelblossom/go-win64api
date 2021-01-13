@@ -184,3 +184,32 @@ func controlService(name string, c svc.Cmd, to svc.State) error {
 	}
 	return nil
 }
+func WaitForServiceRunning(name string) error {
+	m, err := mgr.Connect()
+	if err != nil {
+		return err
+	}
+	defer m.Disconnect()
+	s, err := m.OpenService(name)
+	if err != nil {
+		return fmt.Errorf("could not access service: %v", err)
+	}
+
+	defer s.Close()
+	status, err := s.Query()
+	if err != nil {
+		return fmt.Errorf("could not get service status: %v", err)
+	}
+	timeout := time.Now().Add(30 * time.Second)
+	for status.State != svc.Running {
+		if timeout.After(time.Now()) {
+			return fmt.Errorf("timeout is out for service to go to state=%d", svc.Running)
+		}
+		time.Sleep(300 * time.Millisecond)
+		status, err = s.Query()
+		if err != nil {
+			return fmt.Errorf("could not retrieve service status: %v", err)
+		}
+	}
+	return nil
+}

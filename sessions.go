@@ -6,8 +6,8 @@ import (
 	"fmt"
 	so "github.com/pavelblossom/go-win64api/shared"
 	"golang.org/x/sys/windows"
+	"golang.org/x/sys/windows/registry"
 	"os"
-	"os/exec"
 	"reflect"
 	"sort"
 	"strings"
@@ -96,10 +96,13 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error getting WTS sessions, %s.", err.Error())
 	}
-	_, _, _ = sessLsaEnumerateLogonSessions.Call(
+	_, _, err = sessLsaEnumerateLogonSessions.Call(
 		uintptr(unsafe.Pointer(&logonSessionCount)),
 		uintptr(unsafe.Pointer(&loginSessionList)),
 	)
+	if err != nil {
+		return nil, fmt.Errorf("Error getting sessLsaEnumerateLogonSessions, %s.", err.Error())
+	}
 	defer sessLsaFreeReturnBuffer.Call(uintptr(unsafe.Pointer(&loginSessionList)))
 
 	var iter uintptr = uintptr(unsafe.Pointer(loginSessionList))
@@ -114,7 +117,7 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 				if in_array(data.LogonType, validTypes) {
 					strLogonDomain := strings.ToUpper(LsatoString(data.LogonDomain))
 					if strLogonDomain != "WINDOW MANAGER" && strLogonDomain != "FONT DRIVER HOST" {
-						sUser := fmt.Sprintf("%s\\%s", strings.ToUpper(LsatoString(data.LogonDomain)), strings.ToLower(LsatoString(data.UserName)))
+						sUser := fmt.Sprintf("%d\\%s", data.Session, strings.ToLower(LsatoString(data.UserName)))
 						sort.Strings(uList)
 						i := sort.Search(len(uList), func(i int) bool { return uList[i] >= sUser })
 						if !(i < len(uList) && uList[i] == sUser) {
@@ -139,29 +142,27 @@ func ListLoggedInUsers() ([]so.SessionDetails, error) {
 								}
 
 								//найдем SID пользователя
-
 								sid, _ := GetRawSidForAccountName(ud.Username)
+								if sid == nil {
+									sid, _ = GetRawSidForAccountNameFromCompName(ud.Username)
+								}
+								if sid == nil {
+									sid, _ = GetRawSidForAccountNameFromDnsDomainName(ud.Username, ud.DnsDomainName)
+								}
 								sid2, _ := ConvertRawSidToStringSid(sid)
 								ud.Sid = sid2
-								//fmt.Println(time.Now().Format("2 Jan 2006 15:04:05.000"), "Reestr")
 								//проверить в реестре откуда подключился, предварительно считаем, что локально
 								ud.Hostcon = "local"
-
-								reestr := fmt.Sprintf(`HKEY_USERS\%+v\Volatile Environment\%+v\`, ud.Sid, ud.Session)
-								reg, _ := exec.Command("cmd.exe", "/c", "chcp", "65001", "&", "cmd.exe", "/C", "reg", "query", reestr, "/v", "CLIENTNAME").Output()
-								ud.Hostcon = "local"
-								if len(strings.Split(string(reg), "CLIENTNAME")) == 2 {
-									hostname := strings.Trim(strings.Split(string(reg), "CLIENTNAME")[1], " ")
-									hostname = strings.ReplaceAll(hostname, "REG_SZ", "")
-									hostname = strings.ReplaceAll(hostname, "\n", "")
-									hostname = strings.ReplaceAll(hostname, "\r", "")
-									hostname = strings.Trim(hostname, " ")
-
-									if len(hostname) > 2 {
-										ud.Hostcon = hostname
-									}
+								k, err := registry.OpenKey(registry.USERS, fmt.Sprintf(`%+v\Volatile Environment\%+v\`, ud.Sid, ud.Session), registry.READ|registry.WOW64_64KEY)
+								defer k.Close()
+								//logger.Debug(k.GetStringValue("SESSIONNAME"))
+								kName, _, err := k.GetStringValue("CLIENTNAME")
+								if err != nil {
+									return nil, fmt.Errorf("Error reading from registry: %s", err.Error())
 								}
-								reg = nil
+								if len(kName) > 2 {
+									ud.Hostcon = kName
+								}
 								hn, _ := os.Hostname()
 								if strings.ToUpper(ud.Domain) == strings.ToUpper(hn) {
 									ud.LocalUser = true
