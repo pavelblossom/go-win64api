@@ -760,3 +760,54 @@ func ConvertWMITime(s string) (time.Time, error) {
 
 	return res, nil
 }
+
+func GetDomainName() (string, error) {
+	ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED)
+	defer ole.CoUninitialize()
+	unknown, err := oleutil.CreateObject("WbemScripting.SWbemLocator")
+	if err != nil {
+		return "", err
+	}
+	defer unknown.Release()
+	wmi, err := unknown.QueryInterface(ole.IID_IDispatch)
+	if err != nil {
+		return "", err
+	}
+	defer wmi.Release()
+	serviceRaw, err := oleutil.CallMethod(wmi, "ConnectServer")
+	if err != nil {
+		return "", err
+	}
+	service := serviceRaw.ToIDispatch()
+	defer service.Release()
+	resultRaw, err := oleutil.CallMethod(service, "ExecQuery", "SELECT Domain FROM Win32_ComputerSystem")
+	if err != nil {
+		return "", err
+	}
+	result := resultRaw.ToIDispatch()
+	defer result.Release()
+
+	countVar, err := oleutil.GetProperty(result, "Count")
+	if err != nil {
+		return "", err
+	}
+	count := int(countVar.Val)
+
+	if count > 0 {
+		itemRaw, err := oleutil.CallMethod(result, "ItemIndex", 0)
+		if err != nil {
+			return "", err
+		}
+		item := itemRaw.ToIDispatch()
+		defer item.Release()
+
+		resMPF, err := oleutil.GetProperty(item, "Domain")
+		if err != nil {
+			return "", err
+		}
+		if !strings.EqualFold("workgroup", resMPF.ToString()) {
+			return resMPF.ToString(), nil
+		}
+	}
+	return "", err
+}
